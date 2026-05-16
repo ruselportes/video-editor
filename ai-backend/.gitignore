@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+.venv/
+ENV/
+
+# Project Data
+data/
+*.mp4
+*.mp3
+*.wav
+*.json
+!requirements.txt
+
+# Local Artifacts (from previous volume mapping iterations)
+public_export/
+dashboard_public/
+remotion_public/

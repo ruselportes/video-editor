@@ -8,10 +8,15 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="MyComp"
         component={MyComposition}
-        durationInFrames={60}
+        durationInFrames={1800} // 60 seconds max to accommodate long scripts
         fps={30}
-        width={1280}
-        height={720}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          blueprintFile: "latest_blueprint.json",
+        }}
+        // When rendering via CLI, you can override with:
+        //   npx remotion render MyComp --props='{"blueprintFile":"MyProduct_blueprint.json"}'
       />
     </>
   );

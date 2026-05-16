@@ -1,0 +1,62 @@
+version: '3.8'
+
+services:
+  # 1. The Central AI Brain (Ollama)
+  # This container physically holds and runs Llama 3 and LLaVA
+  ollama-server:
+    image: ollama/ollama:latest
+    container_name: ollama-server
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # If you have an NVIDIA GPU, uncomment the deployment block below to enable GPU acceleration in Docker
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # 2. The Python API Server & CrewAI Orchestrator
+  ai-backend:
+    build: 
+      context: ./ai-backend
+      dockerfile: Dockerfile
+    container_name: tiktok-ai-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-backend:/app
+      - blueprint_data:/app/dashboard_public
+      - ./public:/app/remotion_public
+    environment:
+      # Now pointing to the Docker container instead of your Windows host
+      - OLLAMA_HOST=http://ollama-server:11434
+    depends_on:
+      - ollama-server
+
+  # 3. The Unified React Dashboard (with embedded Remotion Player)
+  ui-dashboard:
+    build:
+      context: ./ui-dashboard
+      dockerfile: Dockerfile
+    container_name: tiktok-ui-dashboard
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./ui-dashboard:/app
+      - /app/node_modules
+      - blueprint_data:/app/public/blueprints
+      - ./public:/app/public/assets
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - ai-backend
+
+volumes:
+  # Persistent storage so Ollama doesn't redownload the models every time you restart Docker
+  ollama_data:
+  # Shared volume so the backend can write blueprints that the dashboard can read
+  blueprint_data:
