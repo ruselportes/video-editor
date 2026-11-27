@@ -1,13 +1,11 @@
-version: '3.8'
-
 services:
   # 1. The Central AI Brain (Ollama)
   # This container physically holds and runs Llama 3 and LLaVA
   ollama-server:
     image: ollama/ollama:latest
     container_name: ollama-server
-    ports:
-      - "11434:11434"
+    # No published port: only ai-backend talks to Ollama, over the compose network.
+    # To reach it from the host for debugging, add: ports: ["127.0.0.1:11434:11434"]
     volumes:
       - ollama_data:/root/.ollama
     # If you have an NVIDIA GPU, uncomment the deployment block below to enable GPU acceleration in Docker
@@ -26,7 +24,7 @@ services:
       dockerfile: Dockerfile
     container_name: tiktok-ai-backend
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./ai-backend:/app
       - blueprint_data:/app/dashboard_public
@@ -34,6 +32,9 @@ services:
     environment:
       # Now pointing to the Docker container instead of your Windows host
       - OLLAMA_HOST=http://ollama-server:11434
+      # Origins allowed to call the API (the dashboard)
+      - ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+      - MAX_UPLOAD_MB=2048
     depends_on:
       - ollama-server
 
@@ -44,7 +45,7 @@ services:
       dockerfile: Dockerfile
     container_name: tiktok-ui-dashboard
     ports:
-      - "5173:5173"
+      - "127.0.0.1:5173:5173"
     volumes:
       - ./ui-dashboard:/app
       - /app/node_modules

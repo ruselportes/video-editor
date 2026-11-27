@@ -1,6 +1,6 @@
 import "./index.css";
 import { Composition } from "remotion";
-import { MyComposition } from "./Composition";
+import { MyComposition, calculateBlueprintMetadata } from "./Composition";
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -8,7 +8,8 @@ export const RemotionRoot: React.FC = () => {
       <Composition
         id="MyComp"
         component={MyComposition}
-        durationInFrames={1800} // 60 seconds max to accommodate long scripts
+        durationInFrames={1800} // placeholder; calculateMetadata sets the real length from the blueprint
+        calculateMetadata={calculateBlueprintMetadata}
         fps={30}
         width={1080}
         height={1920}

@@ -4,6 +4,9 @@ import json
 import cv2
 import os
 
+# Same variable crew_agents uses; in Docker it points at the ollama-server container
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+
 def analyze_clip_frame(clip_path: str) -> str:
     """
     Extracts the middle frame of a video clip, sends it to the local LLaVA model
@@ -30,13 +33,14 @@ def analyze_clip_frame(clip_path: str) -> str:
     
     try:
         response = requests.post(
-            "http://localhost:11434/api/generate",
+            f"{OLLAMA_HOST}/api/generate",
             json={
                 "model": "llava",
                 "prompt": prompt,
                 "images": [base64_image],
                 "stream": False
-            }
+            },
+            timeout=600,
         )
         
         if response.status_code == 200:
