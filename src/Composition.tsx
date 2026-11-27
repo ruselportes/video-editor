@@ -1,8 +1,8 @@
-import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig, spring, staticFile, Audio, Video, delayRender, continueRender } from "remotion";
-import React, { useState, useEffect, useCallback } from "react";
+import { AbsoluteFill, Sequence, useCurrentFrame, useVideoConfig, spring, staticFile, Audio, Video, CalculateMetadataFunction } from "remotion";
+import React from "react";
 
 // The strict JSON contract our Python CrewAI Director generates
-interface Blueprint {
+export interface Blueprint {
   project_name: string;
   audio_track: string;
   background_music?: string;
@@ -39,49 +39,46 @@ const MOCK_BLUEPRINT: Blueprint = {
   ]
 };
 
-export const MyComposition: React.FC<{ blueprintFile?: string }> = ({ blueprintFile }) => {
+type CompositionProps = {
+  blueprintFile?: string;
+  // Filled in by calculateMetadata; not meant to be passed by hand
+  blueprint?: Blueprint;
+  useMock?: boolean;
+};
+
+const DEFAULT_DURATION = 1800;
+
+// Length in frames: explicit total, else the end of the last clip/caption
+const blueprintFrames = (bp: Blueprint): number => {
+  if (bp.total_duration_frames && bp.total_duration_frames > 0) return bp.total_duration_frames;
+  const ends = [...(bp.video_clips ?? []), ...(bp.dynamic_captions ?? [])].map((x) => x?.end_frame || 0);
+  const last = Math.max(0, ...ends);
+  return last > 0 ? last : DEFAULT_DURATION;
+};
+
+// Loads the blueprint before rendering so the composition length matches it
+export const calculateBlueprintMetadata: CalculateMetadataFunction<CompositionProps> = async ({ props }) => {
+  const filename = props.blueprintFile || "latest_blueprint.json";
+  try {
+    const response = await fetch(`${staticFile(filename)}?t=${Date.now()}`);
+    if (!response.ok) throw new Error(`Blueprint not found: ${filename}`);
+    const blueprint: Blueprint = await response.json();
+    return { durationInFrames: blueprintFrames(blueprint), props: { ...props, blueprint, useMock: false } };
+  } catch (err) {
+    // No blueprint file yet: fall back to mock for dev/preview
+    console.warn(`Could not load blueprint "${filename}", using mock data for preview.`, err);
+    return { durationInFrames: blueprintFrames(MOCK_BLUEPRINT), props: { ...props, blueprint: MOCK_BLUEPRINT, useMock: true } };
+  }
+};
+
+// Helper to strip bad prefixes like "./data/" which Remotion's staticFile() rejects
+const cleanPath = (path: string) => {
+  return path.replace(/^\.\/data\//, "").replace(/^\.\//, "");
+};
+
+export const MyComposition: React.FC<CompositionProps> = ({ blueprint = MOCK_BLUEPRINT, useMock = true }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-
-  // Helper to strip bad prefixes like "./data/" which Remotion's staticFile() rejects
-  const cleanPath = (path: string) => {
-    return path.replace(/^\.\/data\//, "").replace(/^\.\//, "");
-  };
-  
-  const [blueprint, setBlueprint] = useState<Blueprint | null>(null);
-  const [handle] = useState(() => delayRender("Loading blueprint JSON..."));
-  const [useMock, setUseMock] = useState(false);
-
-  const loadBlueprint = useCallback(async () => {
-    // Determine which file to load (prop overrides default)
-    const filename = blueprintFile || "latest_blueprint.json";
-    
-    try {
-      const url = `${staticFile(filename)}?t=${Date.now()}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Blueprint not found: ${filename}`);
-      }
-      
-      const data: Blueprint = await response.json();
-      setBlueprint(data);
-      continueRender(handle);
-    } catch (err) {
-      // No blueprint file yet — fall back to mock for dev/preview
-      console.warn(`Could not load blueprint "${filename}", using mock data for preview.`, err);
-      setBlueprint(MOCK_BLUEPRINT);
-      setUseMock(true);
-      continueRender(handle);
-    }
-  }, [blueprintFile, handle]);
-
-  useEffect(() => {
-    loadBlueprint();
-  }, [loadBlueprint]);
-
-  // While loading, show nothing (Remotion will wait via delayRender)
-  if (!blueprint) return null;
 
   return (
     <AbsoluteFill style={{ backgroundColor: "black" }}>
@@ -109,11 +106,14 @@ export const MyComposition: React.FC<{ blueprintFile?: string }> = ({ blueprintF
       )}
 
       {/* 1. LAYER: Background Video Clips (B-Roll) */}
-      {(blueprint.video_clips || (blueprint as any).clip_timeline || []).map((clip: any, index: number) => {
-        const duration = clip.end_frame - clip.start_frame;
-        
+      {(blueprint.video_clips || (blueprint as Blueprint & { clip_timeline?: Blueprint["video_clips"] }).clip_timeline || []).map((clip: Partial<Blueprint["video_clips"][number]>, index: number) => {
+        const duration = (clip?.end_frame ?? NaN) - (clip?.start_frame ?? NaN);
+        // <Sequence> throws on non-positive or non-finite durations
+        if (!Number.isFinite(duration) || duration <= 0 || clip.start_frame === undefined) return null;
+
         // Safety: If the AI puts a description instead of a filename, show a placeholder
-        const isRealFile = clip.file.includes('.') && !clip.file.includes(' ');
+        const file = typeof clip.file === "string" ? clip.file : "";
+        const isRealFile = file.includes('.') && !file.includes(' ');
 
         return (
           <Sequence key={index} from={clip.start_frame} durationInFrames={duration}>
@@ -126,13 +126,13 @@ export const MyComposition: React.FC<{ blueprintFile?: string }> = ({ blueprintF
               }}>
                  <h2 style={{ color: "rgba(255,255,255,0.2)", fontSize: "4rem", fontFamily: 'sans-serif', textAlign: 'center', padding: 40 }}>
                    [ Clip {index + 1} ]<br/>
-                   <span style={{ fontSize: '1.5rem' }}>{isRealFile ? clip.file : 'Missing Visuals'}</span>
+                   <span style={{ fontSize: '1.5rem' }}>{isRealFile ? file : 'Missing Visuals'}</span>
                  </h2>
               </AbsoluteFill>
             ) : (
               /* Real video clip from the pipeline */
               <Video 
-                src={staticFile(cleanPath(clip.file))} 
+                src={staticFile(cleanPath(file))} 
                 style={{ width: "100%", height: "100%", objectFit: "cover" }} 
               />
             )}

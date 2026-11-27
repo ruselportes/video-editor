@@ -46,6 +46,12 @@ def run_crew_pipeline(product_name: str, clip_descriptions: list) -> str:
         Write a 30-second conversational TikTok script selling a {product_name}.
         You MUST base your visual cues on these available clips:
         {clips_context}
+
+        HONESTY RULES (affiliate content must not mislead buyers):
+        - Do NOT invent discount codes, prices, percentages off, giveaways or deadlines.
+        - Do NOT claim product features (materials, certifications, RFID, waterproofing, etc.)
+          unless they are clearly visible in the clip descriptions or named in the product name.
+        - Keep claims general when you are unsure.
         ''',
         expected_output="A 30-second conversational script with visual cues.",
         agent=marketer

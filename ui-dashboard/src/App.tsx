@@ -1,8 +1,18 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { Player } from '@remotion/player';
 import type { PlayerRef } from '@remotion/player';
 import { VideoComposition, MOCK_BLUEPRINT, type Blueprint } from './VideoComposition';
 import './index.css';
+
+const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') || 'http://localhost:8000';
+const MAX_POLL_FAILURES = 10;
+
+// Length of a blueprint in frames: explicit total, else the end of the last clip/caption
+const blueprintFrames = (bp: Blueprint): number => {
+  if (bp.total_duration_frames && bp.total_duration_frames > 0) return bp.total_duration_frames;
+  const ends = [...(bp.video_clips ?? []), ...(bp.dynamic_captions ?? [])].map((x) => x.end_frame || 0);
+  return Math.max(30, ...ends);
+};
 
 function App() {
   const [productName, setProductName] = useState('');
@@ -18,6 +28,17 @@ function App() {
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const playerRef = useRef<PlayerRef>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
+
+  // Stop polling if the component unmounts mid-job
+  useEffect(() => stopPolling, [stopPolling]);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -48,12 +69,12 @@ function App() {
     }
   };
 
-  const loadBlueprint = useCallback(async (name: string) => {
-    const safeName = name.replace(/ /g, '_');
+  const loadBlueprint = useCallback(async (blueprintFile: string) => {
     try {
-      const res = await fetch(`/blueprints/${safeName}_blueprint.json?t=${Date.now()}`);
+      const res = await fetch(`/blueprints/${encodeURIComponent(blueprintFile)}?t=${Date.now()}`);
       if (!res.ok) throw new Error('Blueprint not found');
       const data: Blueprint = await res.json();
+      if (!Array.isArray(data.video_clips)) throw new Error('Blueprint has no video_clips');
       setBlueprint(data);
       setIsRealBlueprint(true);
       // Auto-play when blueprint loads
@@ -75,13 +96,19 @@ function App() {
     formData.append('product_name', productName);
 
     try {
-      const response = await fetch('http://localhost:8000/api/generate', {
+      const response = await fetch(`${API_URL}/api/generate`, {
         method: 'POST',
         body: formData,
       });
-      
-      if (!response.ok) throw new Error('Failed to start generation');
-      
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        setStatus('error');
+        setProgress(0);
+        setMessage(body?.detail ? String(body.detail) : `Backend returned ${response.status}.`);
+        return;
+      }
+
       pollStatus();
     } catch (error) {
       setStatus('error');
@@ -91,30 +118,40 @@ function App() {
   };
 
   const pollStatus = () => {
-    const interval = setInterval(async () => {
+    stopPolling();
+    let failures = 0;
+    pollRef.current = setInterval(async () => {
       try {
-        const res = await fetch('http://localhost:8000/api/status');
+        const res = await fetch(`${API_URL}/api/status`);
+        if (!res.ok) throw new Error(`Status ${res.status}`);
         const data = await res.json();
-        
+        failures = 0;
+
         setProgress(data.progress);
         setMessage(data.message);
-        
+
         if (data.status === 'complete') {
-          clearInterval(interval);
+          stopPolling();
           setStatus(data.status);
           // Load the generated blueprint into the player
-          loadBlueprint(productName);
+          if (data.blueprint) loadBlueprint(data.blueprint);
         } else if (data.status === 'error') {
-          clearInterval(interval);
+          stopPolling();
           setStatus(data.status);
         }
       } catch (e) {
         console.error("Polling error", e);
+        failures += 1;
+        if (failures >= MAX_POLL_FAILURES) {
+          stopPolling();
+          setStatus('error');
+          setMessage('Lost connection to AI Backend.');
+        }
       }
     }, 1000);
   };
 
-  const totalFrames = blueprint.total_duration_frames || 1800; // Increased default to 60s
+  const totalFrames = blueprintFrames(blueprint);
 
   return (
     <div className="app-layout">

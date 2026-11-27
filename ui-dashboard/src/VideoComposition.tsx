@@ -43,14 +43,18 @@ export const VideoComposition: React.FC<{ blueprint: Blueprint }> = ({ blueprint
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const hasRealClips = blueprint.video_clips.some(c => c.file && c.file.length > 0);
+  const clips = Array.isArray(blueprint.video_clips) ? blueprint.video_clips : [];
+  const captions = Array.isArray(blueprint.dynamic_captions) ? blueprint.dynamic_captions : [];
+  const hasRealClips = clips.some(c => typeof c.file === "string" && c.file.length > 0);
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#0b0f19" }}>
       
       {/* 1. LAYER: Background Video Clips (B-Roll) */}
-      {blueprint.video_clips.map((clip, index) => {
+      {clips.map((clip, index) => {
         const duration = clip.end_frame - clip.start_frame;
+        // <Sequence> throws on non-positive or non-finite durations
+        if (!Number.isFinite(duration) || duration <= 0 || !Number.isFinite(clip.start_frame)) return null;
         return (
           <Sequence key={index} from={clip.start_frame} durationInFrames={duration}>
             {hasRealClips && clip.file ? (
@@ -85,7 +89,7 @@ export const VideoComposition: React.FC<{ blueprint: Blueprint }> = ({ blueprint
 
       {/* 4. LAYER: Dynamic TikTok Captions (Alex Hormozi Style) */}
       <AbsoluteFill style={{ justifyContent: "center", alignItems: "center", top: "15%" }}>
-        {blueprint.dynamic_captions.map((cap, i) => {
+        {captions.map((cap, i) => {
           const isActive = frame >= cap.start_frame && frame <= cap.end_frame;
           if (!isActive) return null;
 

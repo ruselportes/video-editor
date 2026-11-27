@@ -71,9 +71,11 @@ When you first build the project, Docker downloads the Ollama *software*, but it
 docker-compose up --build
 ```
 This launches **all three services** in one go:
-- 🧠 **Ollama AI server** (Llama 3 + LLaVA) on port `11434`
-- ⚙️ **Python FastAPI backend** (CrewAI pipeline) on port `8000`
-- 🖥️ **Unified Dashboard** (with embedded Remotion Player) on port `5173`
+- 🧠 **Ollama AI server** (Llama 3 + LLaVA), reachable only by the backend on the internal Docker network
+- ⚙️ **Python FastAPI backend** (CrewAI pipeline) on `127.0.0.1:8000`
+- 🖥️ **Unified Dashboard** (with embedded Remotion Player) on `127.0.0.1:5173`
+
+All ports are bound to `127.0.0.1`, so other devices on your network can't reach them. The backend only accepts requests from the dashboard's origin (`ALLOWED_ORIGINS` in `docker-compose.yml`), and runs one job at a time.
 
 Open **`http://localhost:5173`** — that's the only URL you need.
 
